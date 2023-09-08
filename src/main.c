@@ -17,6 +17,7 @@
 #include "v4l2-source.h"
 #include "test-source.h"
 #include "jpg-source.h"
+#include "mjpeg-source.h"
 #include "slideshow-source.h"
 
 static void usage(const char *argv0)
@@ -24,6 +25,8 @@ static void usage(const char *argv0)
 	fprintf(stderr, "Usage: %s [options] <uvc device>\n", argv0);
 	fprintf(stderr, "Available options are\n");
 	fprintf(stderr, " -c device	V4L2 source device\n");
+	fprintf(stderr, " -p mjpegpipe\n");
+	fprintf(stderr, " -e pipetosignal start of pipe streaming\n");
 	fprintf(stderr, " -i image	MJPEG image\n");
 	fprintf(stderr, " -s directory	directory of slideshow images\n");
 	fprintf(stderr, " -h		Print this help screen and exit\n");
@@ -62,6 +65,8 @@ int main(int argc, char *argv[])
 	char *function = NULL;
 	char *cap_device = NULL;
 	char *img_path = NULL;
+	char *mjpegPipe = NULL;
+	char *mjpegSignalPipe = NULL;
 	char *slideshow_dir = NULL;
 
 	struct uvc_function_config *fc;
@@ -71,7 +76,7 @@ int main(int argc, char *argv[])
 	int ret = 0;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "c:i:s:k:h")) != -1) {
+	while ((opt = getopt(argc, argv, "c:i:s:k:h:p:e")) != -1) {
 		switch (opt) {
 		case 'c':
 			cap_device = optarg;
@@ -79,6 +84,14 @@ int main(int argc, char *argv[])
 
 		case 'i':
 			img_path = optarg;
+			break;
+
+		case 'p':
+			mjpegPipe = optarg;
+			break;
+
+		case 'e':
+			mjpegSignalPipe = optarg;
 			break;
 
 		case 's':
@@ -128,7 +141,10 @@ int main(int argc, char *argv[])
 		src = jpg_video_source_create(img_path);
 	else if (slideshow_dir)
 		src = slideshow_video_source_create(slideshow_dir);
-	else
+	else if (mjpegPipe && mjpegSignalPipe) {
+		src = mjpeg_video_source_create(mjpegPipe, mjpegSignalPipe);
+		mjpeg_video_source_init(src, &events);
+	} else
 		src = test_video_source_create();
 	if (src == NULL) {
 		ret = 1;
