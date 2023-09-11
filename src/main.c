@@ -22,8 +22,9 @@
 
 static void usage(const char *argv0)
 {
-	fprintf(stderr, "Usage: %s [options] <uvc device>\n", argv0);
+	fprintf(stderr, "Usage: %s [options]\n", argv0);
 	fprintf(stderr, "Available options are\n");
+	fprintf(stderr, " -f uvc device\n");
 	fprintf(stderr, " -c device	V4L2 source device\n");
 	fprintf(stderr, " -p mjpegpipe\n");
 	fprintf(stderr, " -e pipetosignal start of pipe streaming\n");
@@ -76,8 +77,11 @@ int main(int argc, char *argv[])
 	int ret = 0;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "c:i:s:k:h:p:e")) != -1) {
+	while ((opt = getopt(argc, argv, "c:i:s:k:h:p:e:f")) != -1) {
 		switch (opt) {
+		case 'f':
+			function = optarg;
+			break;
 		case 'c':
 			cap_device = optarg;
 			break;
@@ -108,9 +112,6 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 	}
-
-	if (argv[optind] != NULL)
-		function = argv[optind];
 
 	fc = configfs_parse_uvc_function(function);
 	if (!fc) {
@@ -144,6 +145,7 @@ int main(int argc, char *argv[])
 	else if (mjpegPipe && mjpegSignalPipe) {
 		src = mjpeg_video_source_create(mjpegPipe, mjpegSignalPipe);
 		mjpeg_video_source_init(src, &events);
+		printf("MJPEG source\n");
 	} else
 		src = test_video_source_create();
 	if (src == NULL) {

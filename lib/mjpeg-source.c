@@ -165,30 +165,34 @@ static void stats(struct mjpeg_source *src)
 
 static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 {
-	int read = fread(&src->jpegBuffer[src->jpegIndex], BUFFER_SIZE, 1, src->fd);
-	if (read == 0)
+	while (true)
 	{
-		return;
-	}
+		int read = fread(&src->jpegBuffer[src->jpegIndex], BUFFER_SIZE, 1, src->fd);
+		if (read == 0)
+		{
+			return;
+		}
 
-	int eof = findEof(src->jpegBuffer, src->jpegIndex + BUFFER_SIZE, src->jpegIndex < 10 ? 0 : src->jpegIndex - 10);
+		int eof = findEof(src->jpegBuffer, src->jpegIndex + BUFFER_SIZE, src->jpegIndex < 10 ? 0 : src->jpegIndex - 10);
 
-	if (eof != 0)
-	{
-		memcpy(buf->mem, &src->jpegBuffer, eof + 1);
-		buf->bytesused = eof + 1;
+		if (eof != 0)
+		{
+			memcpy(buf->mem, &src->jpegBuffer, eof + 1);
+			buf->bytesused = eof + 1;
 
-		src->data += eof + 1;
-		int leftToCopy = (src->jpegIndex + BUFFER_SIZE) - (eof + 1);
-		memcpy(&src->jpegBuffer[0], &src->jpegBuffer[eof + 1], leftToCopy);
+			src->data += eof + 1;
+			int leftToCopy = (src->jpegIndex + BUFFER_SIZE) - (eof + 1);
+			memcpy(&src->jpegBuffer[0], &src->jpegBuffer[eof + 1], leftToCopy);
 
-		src->jpegIndex = leftToCopy;
+			src->jpegIndex = leftToCopy;
 
-		stats(src);
-	}
-	else
-	{
-		src->jpegIndex += BUFFER_SIZE;
+			stats(src);
+			return;
+		}
+		else
+		{
+			src->jpegIndex += BUFFER_SIZE;
+		}
 	}
 }
 
