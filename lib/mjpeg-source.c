@@ -37,6 +37,7 @@ struct mjpeg_source
 
 	char *jpegBuffer;
 	FILE *fd;
+	FILE *signalPipe;
 	int count;
 	int data;
 	int jpegIndex;
@@ -67,17 +68,47 @@ static int findEof(char buffer[], int length, int offset)
 	return 0;
 }
 
+static int init(struct mjpeg_source *src) {
+	printf("Stream on\n");
+	printf("Signal pipe sending 1!!!\n");
+	
+	gettimeofday(src->start, NULL);
+	src->signalPipe = fopen(src->mjpegPipeSignalPath, "w");
+	if(src->signalPipe == NULL) {
+		return -1;
+	}
+	unsigned char w = 1;
+	fwrite(&w,sizeof(w), 1, src->signalPipe);
+	fflush(src->signalPipe);
+	printf("Opening data stream\n");
+	src->fd = fopen(src->mjpegPipePath, "rb");
+
+	if(src->fd == NULL) {
+		return -1;
+	}
+	return 0;
+}
+
+static int deinit(struct mjpeg_source *src) {
+	printf("Stream off\n");
+	printf("Signal pipe sending 0!!!\n");
+	unsigned char w = 0;
+	fwrite(&w,sizeof(w), 1, src->signalPipe);
+	fflush(src->signalPipe);
+	fclose(src->signalPipe);
+	fclose(src->fd);
+	return 0;
+}
+
 static void mjpeg_source_destroy(struct video_source *s)
 {
 	struct mjpeg_source *src = to_mjpeg_source(s);
 
+	printf("DESTROYING!!!\n");
+
 	if (src->jpegBuffer)
 	{
 		free(src->jpegBuffer);
-	}
-	if (src->fd)
-	{
-		fclose(src->fd);
 	}
 	if (src->start)
 	{
@@ -115,21 +146,15 @@ static int mjpeg_source_free_buffers(struct video_source *s __attribute__((unuse
 }
 
 static int mjpeg_source_stream_on(struct video_source *s)
-{
+{	
 	struct mjpeg_source *src = to_mjpeg_source(s);
-	// int ret;
-
-	// ret = timer_arm(src->timer);
-	// if (ret)
-	// 	return ret;
-
-	src->streaming = true;
-	return 0;
+	return init(src);
 }
 
 static int mjpeg_source_stream_off(struct video_source *s)
 {
 	struct mjpeg_source *src = to_mjpeg_source(s);
+	deinit(src);
 	// int ret;
 
 	// /*
@@ -142,26 +167,29 @@ static int mjpeg_source_stream_off(struct video_source *s)
 	return 0;
 }
 
-static void stats(struct mjpeg_source *src)
-{
-	src->count++;
+// static void stats(struct mjpeg_source *src)
+// {
+// 	src->count++;
 
-	if (src->count % 50 == 0)
-	{
-		gettimeofday(src->tmp, NULL);
+// 	if (src->count % 50 == 0)
+// 	{
+		
+// 		gettimeofday(src->tmp, NULL);
+		
+// 		printf("ERROR\n");
+// 		long tmp1 = src->start->tv_sec * 1000L + src->start->tv_usec / 1000;
+// 		printf("ERROR fin\n");
+// 		long tmp2 = src->tmp->tv_sec * 1000L + src->tmp->tv_usec / 1000;
+// 		double elapsedInSeconds = (tmp2 - tmp1) / 1000.0;
 
-		long tmp1 = src->start->tv_sec * 1000L + src->start->tv_usec / 1000;
-		long tmp2 = src->tmp->tv_sec * 1000L + src->tmp->tv_usec / 1000;
-		double elapsedInSeconds = (tmp2 - tmp1) / 1000.0;
-
-		// float now = clock();
-		// float elapsedInSeconds = (now - start) / CLOCKS_PER_SEC * 1000;
-		printf("FPS: %f, Mb/s: %f\n", src->count / elapsedInSeconds, (src->data / 1024.0 / 1024.0) / elapsedInSeconds);
-		gettimeofday(src->start, NULL);
-		src->count = 0;
-		src->data = 0;
-	}
-}
+// 		// float now = clock();
+// 		// float elapsedInSeconds = (now - start) / CLOCKS_PER_SEC * 1000;
+// 		printf("FPS: %f, Mb/s: %f\n", src->count / elapsedInSeconds, (src->data / 1024.0 / 1024.0) / elapsedInSeconds);
+// 		gettimeofday(src->start, NULL);
+// 		src->count = 0;
+// 		src->data = 0;
+// 	}
+// }
 
 static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 {
@@ -177,7 +205,7 @@ static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 
 		if (eof != 0)
 		{
-			memcpy(buf->mem, &src->jpegBuffer, eof + 1);
+			memcpy(buf->mem, src->jpegBuffer, eof + 1);
 			buf->bytesused = eof + 1;
 
 			src->data += eof + 1;
@@ -186,7 +214,7 @@ static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 
 			src->jpegIndex = leftToCopy;
 
-			stats(src);
+			// stats(src);
 			return;
 		}
 		else
@@ -196,31 +224,15 @@ static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 	}
 }
 
-static void setUp(struct mjpeg_source *src)
-{
-	printf("SetUp...\n");
-	src->jpegBuffer = (char *)malloc(2 * 1024 * 1024);
-	src->start = (struct timeval *)malloc(sizeof(struct timeval));
-	src->tmp = (struct timeval *)malloc(sizeof(struct timeval));
-	gettimeofday(src->start, NULL);
-	fclose(fopen(src->mjpegPipeSignalPath, "w"));
-	src->fd = fopen(src->mjpegPipeSignalPath, "rb");
-	if (src->fd == NULL)
-	{
-		printf("Opening pipe failed!!!\n");
-	}
-}
-
 static void mjpeg_source_fill_buffer(struct video_source *s,
 									 struct video_buffer *buf)
 {
 	struct mjpeg_source *src = to_mjpeg_source(s);
-
-	if (src->fd == NULL)
-	{
-		setUp(src);
+	if(src->fd != NULL) {
+		readFrame(src, buf);
+	} else {
+		printf("FILE NOT OPEN\n");
 	}
-	readFrame(src, buf);
 }
 
 static const struct video_source_ops mjpeg_source_ops = {
@@ -241,9 +253,6 @@ struct video_source *mjpeg_video_source_create(char *mjpegPipePath, char *mjpegS
 	struct mjpeg_source *src = malloc(sizeof *src);
 
 	src = malloc(sizeof *src);
-	if (!src)
-		return NULL;
-
 	memset(src, 0, sizeof *src);
 	src->src.ops = &mjpeg_source_ops;
 
@@ -257,5 +266,7 @@ void mjpeg_video_source_init(struct video_source *s, struct events *events)
 {
 	struct mjpeg_source *src = to_mjpeg_source(s);
 
+	src->jpegBuffer = (char *)malloc(2 * 1024 * 1024);
+	src->tmp = (struct timeval *)malloc(sizeof(struct timeval));
 	src->src.events = events;
 }

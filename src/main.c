@@ -24,15 +24,13 @@ static void usage(const char *argv0)
 {
 	fprintf(stderr, "Usage: %s [options]\n", argv0);
 	fprintf(stderr, "Available options are\n");
-	fprintf(stderr, " -f uvc device\n");
+	fprintf(stderr, " -f UVC device instance specifier\n");
 	fprintf(stderr, " -c device	V4L2 source device\n");
 	fprintf(stderr, " -p mjpegpipe\n");
 	fprintf(stderr, " -e pipetosignal start of pipe streaming\n");
 	fprintf(stderr, " -i image	MJPEG image\n");
 	fprintf(stderr, " -s directory	directory of slideshow images\n");
 	fprintf(stderr, " -h		Print this help screen and exit\n");
-	fprintf(stderr, "\n");
-	fprintf(stderr, " <uvc device>	UVC device instance specifier\n");
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "  For ConfigFS devices the <uvc device> parameter can take the form of a shortened\n");
@@ -55,10 +53,29 @@ static void usage(const char *argv0)
 /* Necessary for and only used by signal handler. */
 static struct events *sigint_events;
 
+struct uvc_function_config *fc;
+struct uvc_stream *stream = NULL;
+struct video_source *src = NULL;
+struct events events;
+int stopped = false;
+
+static void destroy() {
+	if(stopped) {
+		return;
+	}
+	stopped = true;
+	printf("Stopping\n");
+	uvc_stream_delete(stream);
+	video_source_destroy(src);
+	events_cleanup(&events);
+	configfs_free_uvc_function(fc);
+}
+
 static void sigint_handler(int signal __attribute__((unused)))
 {
 	/* Stop the main loop when the user presses CTRL-C */
 	events_stop(sigint_events);
+	destroy();
 }
 
 int main(int argc, char *argv[])
@@ -70,18 +87,15 @@ int main(int argc, char *argv[])
 	char *mjpegSignalPipe = NULL;
 	char *slideshow_dir = NULL;
 
-	struct uvc_function_config *fc;
-	struct uvc_stream *stream = NULL;
-	struct video_source *src = NULL;
-	struct events events;
 	int ret = 0;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "c:i:s:k:h:p:e:f")) != -1) {
+	while ((opt = getopt(argc, argv, "c:i:s:k:h:p:e:f:")) != -1) {
 		switch (opt) {
 		case 'f':
 			function = optarg;
 			break;
+
 		case 'c':
 			cap_device = optarg;
 			break;
@@ -113,6 +127,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	printf("Functions %s\n", function);
+	printf("MJpeg %s\n", mjpegPipe);
+	printf("MJpeg signal pipe %s\n", mjpegSignalPipe);
+
 	fc = configfs_parse_uvc_function(function);
 	if (!fc) {
 		printf("Failed to identify function configuration\n");
@@ -134,6 +152,7 @@ int main(int argc, char *argv[])
 
 	sigint_events = &events;
 	signal(SIGINT, sigint_handler);
+	signal(SIGTERM, sigint_handler);
 
 	/* Create and initialize a video source. */
 	if (cap_device)
@@ -172,10 +191,7 @@ int main(int argc, char *argv[])
 
 done:
 	/* Cleanup */
-	uvc_stream_delete(stream);
-	video_source_destroy(src);
-	events_cleanup(&events);
-	configfs_free_uvc_function(fc);
+	destroy();
 
 	return ret;
 }
