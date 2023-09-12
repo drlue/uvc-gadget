@@ -97,6 +97,7 @@ static int deinit(struct mjpeg_source *src) {
 	fflush(src->signalPipe);
 	fclose(src->signalPipe);
 	fclose(src->fd);
+	src->fd = NULL;
 	return 0;
 }
 
@@ -148,7 +149,8 @@ static int mjpeg_source_free_buffers(struct video_source *s __attribute__((unuse
 static int mjpeg_source_stream_on(struct video_source *s)
 {	
 	struct mjpeg_source *src = to_mjpeg_source(s);
-	return init(src);
+	printf("Stream set to on: %p", src);
+	return 0;
 }
 
 static int mjpeg_source_stream_off(struct video_source *s)
@@ -167,29 +169,27 @@ static int mjpeg_source_stream_off(struct video_source *s)
 	return 0;
 }
 
-// static void stats(struct mjpeg_source *src)
-// {
-// 	src->count++;
+static void stats(struct mjpeg_source *src)
+{
+	src->count++;
 
-// 	if (src->count % 50 == 0)
-// 	{
+	if (src->count % 50 == 0)
+	{
 		
-// 		gettimeofday(src->tmp, NULL);
+		gettimeofday(src->tmp, NULL);
 		
-// 		printf("ERROR\n");
-// 		long tmp1 = src->start->tv_sec * 1000L + src->start->tv_usec / 1000;
-// 		printf("ERROR fin\n");
-// 		long tmp2 = src->tmp->tv_sec * 1000L + src->tmp->tv_usec / 1000;
-// 		double elapsedInSeconds = (tmp2 - tmp1) / 1000.0;
+		long tmp1 = src->start->tv_sec * 1000L + src->start->tv_usec / 1000;
+		long tmp2 = src->tmp->tv_sec * 1000L + src->tmp->tv_usec / 1000;
+		double elapsedInSeconds = (tmp2 - tmp1) / 1000.0;
 
-// 		// float now = clock();
-// 		// float elapsedInSeconds = (now - start) / CLOCKS_PER_SEC * 1000;
-// 		printf("FPS: %f, Mb/s: %f\n", src->count / elapsedInSeconds, (src->data / 1024.0 / 1024.0) / elapsedInSeconds);
-// 		gettimeofday(src->start, NULL);
-// 		src->count = 0;
-// 		src->data = 0;
-// 	}
-// }
+		// float now = clock();
+		// float elapsedInSeconds = (now - start) / CLOCKS_PER_SEC * 1000;
+		printf("FPS: %f, Mb/s: %f\n", src->count / elapsedInSeconds, (src->data / 1024.0 / 1024.0) / elapsedInSeconds);
+		gettimeofday(src->start, NULL);
+		src->count = 0;
+		src->data = 0;
+	}
+}
 
 static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 {
@@ -214,7 +214,7 @@ static void readFrame(struct mjpeg_source *src, struct video_buffer *buf)
 
 			src->jpegIndex = leftToCopy;
 
-			// stats(src);
+			stats(src);
 			return;
 		}
 		else
@@ -228,11 +228,10 @@ static void mjpeg_source_fill_buffer(struct video_source *s,
 									 struct video_buffer *buf)
 {
 	struct mjpeg_source *src = to_mjpeg_source(s);
-	if(src->fd != NULL) {
-		readFrame(src, buf);
-	} else {
-		printf("FILE NOT OPEN\n");
+	if(src->fd == NULL) {
+		init(src);
 	}
+	readFrame(src, buf);
 }
 
 static const struct video_source_ops mjpeg_source_ops = {
@@ -268,5 +267,6 @@ void mjpeg_video_source_init(struct video_source *s, struct events *events)
 
 	src->jpegBuffer = (char *)malloc(2 * 1024 * 1024);
 	src->tmp = (struct timeval *)malloc(sizeof(struct timeval));
+	src->start = (struct timeval *)malloc(sizeof(struct timeval));
 	src->src.events = events;
 }
